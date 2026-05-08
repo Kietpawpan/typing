@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Typewriter App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Trirong:wght@300;400&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            background-color: #e0d8c0;
+            font-family: 'Special Elite', 'Trirong', 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .instruction {
+            font-family: sans-serif;
+            font-size: 16px;
+            color: #555;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        #paper-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            background-color: #fdfbf7;
+        }
+        #typewriter-paper {
+            background-color: transparent;
+            width: 100%;
+            min-height: 500px;
+            padding: 50px 40px 40px 40px; 
+            border: 1px solid #bba07e;
+            font-size: 28px;
+            line-height: 2.2; 
+            color: #000;
+            outline: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-spacing: 0.2em; 
+            box-sizing: border-box;
+            transition: font-size 0.2s;
+        }
+        #typewriter-paper[data-placeholder]:empty:before {
+            content: attr(data-placeholder);
+            color: #a0a0a0;
+            pointer-events: none;
+            display: block;
+        }
+        #draw-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            touch-action: none;
+        }
+        .controls {
+            margin-top: 30px;
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            max-width: 900px;
+        }
+        .controls-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        .font-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Special Elite', monospace;
+            background-color: #d1c8ae;
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: 2px solid #bba07e;
+        }
+        .font-control input[type=range] {
+            cursor: pointer;
+        }
+        button {
+            font-family: 'Special Elite', monospace;
+            font-size: 16px;
+            padding: 10px 20px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            border: 2px solid #1a252f;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 3px 3px 0px #1a252f;
+            transition: all 0.1s;
+        }
+        button:active {
+            box-shadow: 0px 0px 0px #1a252f;
+            transform: translate(3px, 3px);
+        }
+        .mode-active {
+            background-color: #e67e22;
+            border-color: #d35400;
+        }
+        .style-active {
+            background-color: #27ae60;
+            border-color: #2ecc71;
+        }
+        .eraser-active {
+            background-color: #e74c3c;
+            border-color: #c0392b;
+        }
+        .btn-save { background-color: #2980b9; border-color: #1a5276; }
+        .btn-load { background-color: #16a085; border-color: #0e6655; }
+        .btn-export { background-color: #8e44ad; border-color: #732d91; }
+        
+        #style-btn, #eraser-btn {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="instruction" id="status-text">Typing Mode: Tap the paper to start typing</div>
+
+    <div id="paper-container">
+        <div id="typewriter-paper" contenteditable="true" spellcheck="false" data-placeholder="Start typing your story here..."></div>
+        <canvas id="draw-canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="controls-group">
+            <div class="font-control">
+                <label for="font-size">Font Size: <span id="font-size-val">28px</span></label>
+                <input type="range" id="font-size" min="16" max="72" value="28" oninput="changeFontSize(this.value)">
+            </div>
+            <button class="btn-save" onclick="saveProjectJSON()">Save Project</button>
+            <button class="btn-load" onclick="document.getElementById('load-project').click()">Load Project</button>
+            <input type="file" id="load-project" accept=".json" style="display: none;" onchange="loadProjectJSON(event)">
+        </div>
+        
+        <div class="controls-group">
+            <button id="toggle-btn" onclick="toggleDrawMode()">Enable Pen Mode</button>
+            <button id="style-btn" onclick="toggleDrawStyle()">Style: Freehand</button>
+            <button id="eraser-btn" onclick="toggleEraser()">Eraser: OFF</button>
+            <button onclick="clearLines()">Clear Ink</button>
+            <button onclick="clearPaper()">Clear Paper</button>
+            <button class="btn-export" onclick="saveAsImage()">Save as Image</button>
+        </div>
+    </div>
+
+    <script>
+        const paper = document.getElementById('typewriter-paper');
+        const canvas = document.getElementById('draw-canvas');
+        const ctx = canvas.getContext('2d');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const styleBtn = document.getElementById('style-btn');
+        const eraserBtn = document.getElementById('eraser-btn');
+        const statusText = document.getElementById('status-text');
+        const paperContainer = document.getElementById('paper-container');
+
+        let isDrawMode = false;
+        let isDrawing = false;
+        let isEraser = false;
+        let drawStyle = 'free'; 
+        let startX = 0;
+        let startY = 0;
+        let lastX = 0;
+        let lastY = 0;
+        let snapshot = null;
+
+        const resizeObserver = new ResizeObserver(() => {
+            let tempImg = null;
+            if (canvas.width > 0 && canvas.height > 0) {
+                tempImg = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            }
+            
+            canvas.width = paper.offsetWidth;
+            canvas.height = paper.offsetHeight;
+            
+            if (tempImg) {
+                ctx.putImageData(tempImg, 0, 0);
+            }
+        });
+        resizeObserver.observe(paper);
+
+        function changeFontSize(size) {
+            paper.style.fontSize = size + 'px';
+            document.getElementById('font-size-val').innerText = size + 'px';
+        }
+
+        function toggleDrawMode() {
+            isDrawMode = !isDrawMode;
+            if (isDrawMode) {
+                canvas.style.pointerEvents = 'auto'; 
+                paper.contentEditable = 'false'; 
+                toggleBtn.classList.add('mode-active');
+                toggleBtn.innerText = 'Back to Typing';
+                styleBtn.style.display = 'inline-block';
+                eraserBtn.style.display = 'inline-block';
+                updateStatusText();
+            } else {
+                canvas.style.pointerEvents = 'none'; 
+                paper.contentEditable = 'true';
+                toggleBtn.classList.remove('mode-active');
+                toggleBtn.innerText = 'Enable Pen Mode';
+                styleBtn.style.display = 'none';
+                eraserBtn.style.display = 'none';
+                statusText.innerText = 'Typing Mode: Tap the paper to start typing';
+                paper.focus();
+            }
+        }
+
+        function toggleDrawStyle() {
+            if (isEraser) toggleEraser(); // ปิดยางลบถ้ากำลังเปลี่ยนสไตล์เส้น
+            
+            if (drawStyle === 'free') {
+                drawStyle = 'straight';
+                styleBtn.innerText = 'Style: Straight Line';
+                styleBtn.classList.add('style-active');
+            } else {
+                drawStyle = 'free';
+                styleBtn.innerText = 'Style: Freehand';
+                styleBtn.classList.remove('style-active');
+            }
+            updateStatusText();
+        }
+
+        function toggleEraser() {
+            isEraser = !isEraser;
+            if (isEraser) {
+                eraserBtn.innerText = 'Eraser: ON';
+                eraserBtn.classList.add('eraser-active');
+                statusText.innerText = 'Eraser Mode: Drag to erase lines';
+            } else {
+                eraserBtn.innerText = 'Eraser: OFF';
+                eraserBtn.classList.remove('eraser-active');
+                updateStatusText();
+            }
+        }
+
+        function updateStatusText() {
+            if (isEraser) {
+                statusText.innerText = 'Eraser Mode: Drag to erase lines';
+                return;
+            }
+            if (drawStyle === 'free') {
+                statusText.innerText = 'Pen Mode: Drag your finger or stylus to draw freely';
+            } else {
+                statusText.innerText = 'Pen Mode: Drag and drop to draw a straight line';
+            }
+        }
+
+        function applyCanvasStyles() {
+            if (isEraser) {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = 20; // หัวยางลบใหญ่กว่าเส้นปกติ
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = '#000000'; 
+                ctx.lineWidth = 3;
+            }
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!isDrawMode) return;
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            lastX = startX;
+            lastY = startY;
+            
+            if (drawStyle === 'straight' && !isEraser) {
+                snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+
+            applyCanvasStyles();
+
+            if (drawStyle === 'straight' && !isEraser) {
+                ctx.putImageData(snapshot, 0, 0);
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(currentX, currentY);
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(currentX, currentY);
+                ctx.stroke();
+                lastX = currentX;
+                lastY = currentY;
+            }
+        });
+
+        canvas.addEventListener('pointerup', () => isDrawing = false);
+        canvas.addEventListener('pointerout', () => isDrawing = false);
+
+        function clearLines() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function clearPaper() {
+            paper.innerHTML = '';
+            clearLines();
+            if (!isDrawMode) paper.focus();
+        }
+
+        function saveAsImage() {
+            paper.style.outline = 'none';
+            html2canvas(paperContainer, {
+                backgroundColor: '#fdfbf7', 
+                scale: 2 
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'my-typewriter-art.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        // ================= ฟังก์ชันบันทึกและเปิดไฟล์ JSON =================
+        function saveProjectJSON() {
+            const projectData = {
+                text: paper.innerHTML,
+                drawing: canvas.toDataURL('image/png'), // เซฟรอยวาดเป็น base64 string
+                fontSize: document.getElementById('font-size').value
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "typewriter_project.json");
+            document.body.appendChild(downloadAnchorNode); 
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function loadProjectJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // โหลดข้อความ
+                    if (data.text !== undefined) paper.innerHTML = data.text;
+                    
+                    // โหลดขนาดฟอนต์
+                    if (data.fontSize !== undefined) {
+                        document.getElementById('font-size').value = data.fontSize;
+                        changeFontSize(data.fontSize);
+                    }
+                    
+                    // โหลดรอยวาดเขียน
+                    if (data.drawing !== undefined) {
+                        const img = new Image();
+                        img.onload = function() {
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(img, 0, 0);
+                        };
+                        img.src = data.drawing;
+                    }
+                } catch (error) {
+                    alert('Invalid project file.');
+                }
+            };
+            reader.readAsText(file);
+            
+            // เคลียร์ค่า input ให้สามารถอัปโหลดไฟล์เดิมซ้ำได้ในภายหลัง
+            event.target.value = '';
+        }
+
+        window.onload = () => {
+            paper.focus();
+        };
+    </script>
+</body>
+</html>
