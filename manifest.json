@@ -1,0 +1,20 @@
+{
+  "name": "1930 Typewriter",
+  "short_name": "Typewriter",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#6b21a8",
+  "icons": [
+    {
+      "src": "type.jpeg",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "type.jpeg",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
